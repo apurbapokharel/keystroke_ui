@@ -4,5 +4,5 @@ import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig({
   plugins: [tailwindcss(), svelte()],
-  base: '/tracker_ui/',
+  base: '/keystroke_ui/',
 })

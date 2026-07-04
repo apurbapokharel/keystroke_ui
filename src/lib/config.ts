@@ -1,6 +1,6 @@
 export const CONFIG = {
-  repoOwner: 'anomalyco',
-  repoName: 'tracker_data',
+  repoOwner: 'apurbapokharel',
+  repoName: 'keystroke_data',
   dataBranch: 'main',
   get rawBaseUrl() {
     return `https://raw.githubusercontent.com/${this.repoOwner}/${this.repoName}/${this.dataBranch}/data`
