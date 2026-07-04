@@ -38,20 +38,14 @@ export async function fetchData(range: TimeRange): Promise<KeystrokeFile[]> {
 }
 
 async function discoverHosts(day: string): Promise<string[]> {
-  const url = `${CONFIG.rawBaseUrl}/${day}/`
+  const url = `https://api.github.com/repos/${CONFIG.repoOwner}/${CONFIG.repoName}/contents/data/${day}`
   try {
-    const res = await fetch(url)
+    const res = await fetch(url, {
+      headers: { Accept: 'application/vnd.github.v3+json' },
+    })
     if (!res.ok) return []
-    const text = await res.text()
-    const hosts: string[] = []
-    const regex = /href="([^"/]+)\/"/g
-    let match
-    while ((match = regex.exec(text)) !== null) {
-      if (match[1] !== '..' && match[1] !== '.') {
-        hosts.push(match[1])
-      }
-    }
-    return hosts
+    const entries: { type: string; name: string }[] = await res.json()
+    return entries.filter((e) => e.type === 'dir').map((e) => e.name)
   } catch {
     return []
   }
