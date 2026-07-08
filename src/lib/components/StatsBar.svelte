@@ -2,36 +2,32 @@
   import { state } from '../stores.svelte'
 
   const s = $derived(state.stats)
+
+  function hourLabel(h: number | null): string {
+    if (h === null) return '—'
+    const am = h < 12
+    const h12 = h % 12 === 0 ? 12 : h % 12
+    return `${h12}${am ? 'am' : 'pm'}`
+  }
+
+  const cards = $derived([
+    { label: 'Total Presses', value: s.totalPresses.toLocaleString(), sub: `${s.activeDays} active day${s.activeDays === 1 ? '' : 's'}` },
+    { label: 'Most Used', value: s.mostUsed?.label ?? '—', sub: s.mostUsed ? `${s.mostUsed.percentage.toFixed(1)}% of all` : '' },
+    { label: 'Least Used', value: s.leastUsed?.label ?? '—', sub: s.leastUsed ? `${s.leastUsed.count.toLocaleString()} presses` : 'letters only' },
+    { label: 'Est. Words', value: s.estWords.toLocaleString(), sub: 'letters ÷ 5' },
+    { label: 'Peak Hour', value: hourLabel(s.peakHour), sub: 'busiest time of day' },
+    { label: 'Correction Rate', value: `${s.correctionRate.toFixed(1)}%`, sub: 'backspace + delete' },
+    { label: 'Home Row', value: `${s.homeRowPercent.toFixed(0)}%`, sub: 'of letter presses' },
+    { label: 'Unique Keys', value: s.uniqueKeys.toLocaleString(), sub: 'distinct keys used' },
+  ])
 </script>
 
-<div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-  <div class="rounded-xl bg-white p-4 shadow-sm border border-gray-100">
-    <p class="text-xs font-medium uppercase tracking-wide text-gray-500">Total Presses</p>
-    <p class="mt-1 text-3xl font-bold text-gray-900 tabular-nums">{s.totalPresses.toLocaleString()}</p>
-  </div>
-
-  <div class="rounded-xl bg-white p-4 shadow-sm border border-gray-100">
-    <p class="text-xs font-medium uppercase tracking-wide text-gray-500">Most Used</p>
-    <p class="mt-1 text-3xl font-bold text-gray-900">
-      {#if s.mostUsed}
-        {s.mostUsed.label}
-        <span class="text-sm font-normal text-gray-500">({s.mostUsed.percentage.toFixed(1)}%)</span>
-      {:else}—{/if}
-    </p>
-  </div>
-
-  <div class="rounded-xl bg-white p-4 shadow-sm border border-gray-100">
-    <p class="text-xs font-medium uppercase tracking-wide text-gray-500">Least Used</p>
-    <p class="mt-1 text-3xl font-bold text-gray-900">
-      {#if s.leastUsed}
-        {s.leastUsed.label}
-        <span class="text-sm font-normal text-gray-500">({s.leastUsed.count})</span>
-      {:else}—{/if}
-    </p>
-  </div>
-
-  <div class="rounded-xl bg-white p-4 shadow-sm border border-gray-100">
-    <p class="text-xs font-medium uppercase tracking-wide text-gray-500">Home Row</p>
-    <p class="mt-1 text-3xl font-bold text-gray-900 tabular-nums">{s.homeRowPercent.toFixed(1)}%</p>
-  </div>
+<div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+  {#each cards as c}
+    <div class="card p-4">
+      <p class="text-xs font-medium uppercase tracking-wide" style="color: var(--muted)">{c.label}</p>
+      <p class="mt-1 text-3xl font-bold" style="color: var(--ink)">{c.value}</p>
+      {#if c.sub}<p class="mt-0.5 text-xs" style="color: var(--ink-2)">{c.sub}</p>{/if}
+    </div>
+  {/each}
 </div>

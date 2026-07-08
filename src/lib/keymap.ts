@@ -1,78 +1,113 @@
-import type { KeyMapEntry } from './types'
+// Full physical-keyboard layout (keybr-style) with a function-key row, modifiers
+// and a navigation cluster. Positions are in "key units"; the renderer scales
+// them. Each entry maps an evdev key code to a slot.
 
-const K: Record<string, KeyMapEntry> = {
-  KEY_GRAVE:        { row: 0, col: 0, w: 1, label: '`' },
-  KEY_1:            { row: 0, col: 1, w: 1, label: '1' },
-  KEY_2:            { row: 0, col: 2, w: 1, label: '2' },
-  KEY_3:            { row: 0, col: 3, w: 1, label: '3' },
-  KEY_4:            { row: 0, col: 4, w: 1, label: '4' },
-  KEY_5:            { row: 0, col: 5, w: 1, label: '5' },
-  KEY_6:            { row: 0, col: 6, w: 1, label: '6' },
-  KEY_7:            { row: 0, col: 7, w: 1, label: '7' },
-  KEY_8:            { row: 0, col: 8, w: 1, label: '8' },
-  KEY_9:            { row: 0, col: 9, w: 1, label: '9' },
-  KEY_0:            { row: 0, col: 10, w: 1, label: '0' },
-  KEY_MINUS:        { row: 0, col: 11, w: 1, label: '-' },
-  KEY_EQUAL:        { row: 0, col: 12, w: 1, label: '=' },
-
-  KEY_Q:            { row: 1, col: 0, w: 1, label: 'Q' },
-  KEY_W:            { row: 1, col: 1, w: 1, label: 'W' },
-  KEY_E:            { row: 1, col: 2, w: 1, label: 'E' },
-  KEY_R:            { row: 1, col: 3, w: 1, label: 'R' },
-  KEY_T:            { row: 1, col: 4, w: 1, label: 'T' },
-  KEY_Y:            { row: 1, col: 5, w: 1, label: 'Y' },
-  KEY_U:            { row: 1, col: 6, w: 1, label: 'U' },
-  KEY_I:            { row: 1, col: 7, w: 1, label: 'I' },
-  KEY_O:            { row: 1, col: 8, w: 1, label: 'O' },
-  KEY_P:            { row: 1, col: 9, w: 1, label: 'P' },
-  KEY_LEFTBRACE:    { row: 1, col: 10, w: 1, label: '[' },
-  KEY_RIGHTBRACE:   { row: 1, col: 11, w: 1, label: ']' },
-  KEY_BACKSLASH:    { row: 1, col: 12, w: 1.5, label: '\\' },
-
-  KEY_A:            { row: 2, col: 0, w: 1, label: 'A' },
-  KEY_S:            { row: 2, col: 1, w: 1, label: 'S' },
-  KEY_D:            { row: 2, col: 2, w: 1, label: 'D' },
-  KEY_F:            { row: 2, col: 3, w: 1, label: 'F' },
-  KEY_G:            { row: 2, col: 4, w: 1, label: 'G' },
-  KEY_H:            { row: 2, col: 5, w: 1, label: 'H' },
-  KEY_J:            { row: 2, col: 6, w: 1, label: 'J' },
-  KEY_K:            { row: 2, col: 7, w: 1, label: 'K' },
-  KEY_L:            { row: 2, col: 8, w: 1, label: 'L' },
-  KEY_SEMICOLON:    { row: 2, col: 9, w: 1, label: ';' },
-  KEY_APOSTROPHE:   { row: 2, col: 10, w: 1, label: "'" },
-
-  KEY_Z:            { row: 3, col: 0, w: 1, label: 'Z' },
-  KEY_X:            { row: 3, col: 1, w: 1, label: 'X' },
-  KEY_C:            { row: 3, col: 2, w: 1, label: 'C' },
-  KEY_V:            { row: 3, col: 3, w: 1, label: 'V' },
-  KEY_B:            { row: 3, col: 4, w: 1, label: 'B' },
-  KEY_N:            { row: 3, col: 5, w: 1, label: 'N' },
-  KEY_M:            { row: 3, col: 6, w: 1, label: 'M' },
-  KEY_COMMA:        { row: 3, col: 7, w: 1, label: ',' },
-  KEY_DOT:          { row: 3, col: 8, w: 1, label: '.' },
-  KEY_SLASH:        { row: 3, col: 9, w: 1, label: '/' },
-
-  KEY_SPACE:        { row: 4, col: 0, w: 6.25, label: '' },
+export interface KeyDef {
+  code: string   // evdev name, e.g. KEY_A
+  x: number      // left edge, in key units
+  y: number      // row index (0 = function row)
+  w: number      // width in key units
+  label: string  // primary glyph
+  small?: boolean // render label at a smaller size (multi-char / modifier keys)
 }
 
-export const KEY_ORDER = Object.keys(K)
-export const KEY_MAP = K
+const U = 1
 
-export function getColor(count: number, maxCount: number): string {
-  if (count === 0) return '#e5e7eb'
-  const ratio = count / maxCount
-  const r = Math.round(55 + 200 * ratio)
-  const g = Math.round(55 + 200 * (1 - ratio))
-  const b = Math.round(200 + 55 * (1 - ratio))
-  return `rgb(${Math.min(255, r)}, ${Math.min(255, g)}, ${Math.min(255, b)})`
+// Build a contiguous run of single-width keys starting at x0.
+function run(y: number, x0: number, defs: [string, string][], w = U): KeyDef[] {
+  return defs.map(([code, label], i) => ({ code, label, x: x0 + i * w, y, w }))
 }
 
-export const SVG_CONFIG = {
-  keyW: 52,
-  keyH: 52,
-  gap: 4,
-  rx: 6,
-  fontSize: 13,
-  get rowH() { return this.keyH + this.gap },
-  get colW() { return this.keyW + this.gap },
+// ── Function row (y=0) ──────────────────────────────────────────────
+const fRow: KeyDef[] = [
+  { code: 'KEY_ESC', x: 0, y: 0, w: 1, label: 'Esc', small: true },
+  ...run(0, 1.5, [['KEY_F1', 'F1'], ['KEY_F2', 'F2'], ['KEY_F3', 'F3'], ['KEY_F4', 'F4']]).map(k => ({ ...k, small: true })),
+  ...run(0, 6, [['KEY_F5', 'F5'], ['KEY_F6', 'F6'], ['KEY_F7', 'F7'], ['KEY_F8', 'F8']]).map(k => ({ ...k, small: true })),
+  ...run(0, 10.5, [['KEY_F9', 'F9'], ['KEY_F10', 'F10'], ['KEY_F11', 'F11'], ['KEY_F12', 'F12']]).map(k => ({ ...k, small: true })),
+]
+
+// ── Number row (y=1) ────────────────────────────────────────────────
+const numRow: KeyDef[] = [
+  ...run(1, 0, [
+    ['KEY_GRAVE', '`'], ['KEY_1', '1'], ['KEY_2', '2'], ['KEY_3', '3'], ['KEY_4', '4'],
+    ['KEY_5', '5'], ['KEY_6', '6'], ['KEY_7', '7'], ['KEY_8', '8'], ['KEY_9', '9'],
+    ['KEY_0', '0'], ['KEY_MINUS', '-'], ['KEY_EQUAL', '='],
+  ]),
+  { code: 'KEY_BACKSPACE', x: 13, y: 1, w: 2, label: 'Bksp', small: true },
+]
+
+// ── QWERTY top row (y=2) ────────────────────────────────────────────
+const topRow: KeyDef[] = [
+  { code: 'KEY_TAB', x: 0, y: 2, w: 1.5, label: 'Tab', small: true },
+  ...run(2, 1.5, [
+    ['KEY_Q', 'Q'], ['KEY_W', 'W'], ['KEY_E', 'E'], ['KEY_R', 'R'], ['KEY_T', 'T'],
+    ['KEY_Y', 'Y'], ['KEY_U', 'U'], ['KEY_I', 'I'], ['KEY_O', 'O'], ['KEY_P', 'P'],
+    ['KEY_LEFTBRACE', '['], ['KEY_RIGHTBRACE', ']'],
+  ]),
+  { code: 'KEY_BACKSLASH', x: 13.5, y: 2, w: 1.5, label: '\\' },
+]
+
+// ── Home row (y=3) ──────────────────────────────────────────────────
+const homeRow: KeyDef[] = [
+  { code: 'KEY_CAPSLOCK', x: 0, y: 3, w: 1.75, label: 'Caps', small: true },
+  ...run(3, 1.75, [
+    ['KEY_A', 'A'], ['KEY_S', 'S'], ['KEY_D', 'D'], ['KEY_F', 'F'], ['KEY_G', 'G'],
+    ['KEY_H', 'H'], ['KEY_J', 'J'], ['KEY_K', 'K'], ['KEY_L', 'L'],
+    ['KEY_SEMICOLON', ';'], ['KEY_APOSTROPHE', "'"],
+  ]),
+  { code: 'KEY_ENTER', x: 12.75, y: 3, w: 2.25, label: 'Enter', small: true },
+]
+
+// ── Bottom row (y=4) ────────────────────────────────────────────────
+const bottomRow: KeyDef[] = [
+  { code: 'KEY_LEFTSHIFT', x: 0, y: 4, w: 2.25, label: 'Shift', small: true },
+  ...run(4, 2.25, [
+    ['KEY_Z', 'Z'], ['KEY_X', 'X'], ['KEY_C', 'C'], ['KEY_V', 'V'], ['KEY_B', 'B'],
+    ['KEY_N', 'N'], ['KEY_M', 'M'], ['KEY_COMMA', ','], ['KEY_DOT', '.'], ['KEY_SLASH', '/'],
+  ]),
+  { code: 'KEY_RIGHTSHIFT', x: 12.25, y: 4, w: 2.75, label: 'Shift', small: true },
+]
+
+// ── Modifier row (y=5) ──────────────────────────────────────────────
+const modRow: KeyDef[] = [
+  { code: 'KEY_LEFTCTRL', x: 0, y: 5, w: 1.25, label: 'Ctrl', small: true },
+  { code: 'KEY_LEFTMETA', x: 1.25, y: 5, w: 1.25, label: 'Meta', small: true },
+  { code: 'KEY_LEFTALT', x: 2.5, y: 5, w: 1.25, label: 'Alt', small: true },
+  { code: 'KEY_SPACE', x: 3.75, y: 5, w: 6.25, label: '' },
+  { code: 'KEY_RIGHTALT', x: 10, y: 5, w: 1.25, label: 'Alt', small: true },
+  { code: 'KEY_RIGHTMETA', x: 11.25, y: 5, w: 1.25, label: 'Meta', small: true },
+  { code: 'KEY_COMPOSE', x: 12.5, y: 5, w: 1.25, label: 'Menu', small: true },
+  { code: 'KEY_RIGHTCTRL', x: 13.75, y: 5, w: 1.25, label: 'Ctrl', small: true },
+]
+
+// ── Navigation cluster (right of the main block) ────────────────────
+const NAV_X = 15.5
+const navCluster: KeyDef[] = [
+  { code: 'KEY_INSERT', x: NAV_X, y: 1, w: 1, label: 'Ins', small: true },
+  { code: 'KEY_HOME', x: NAV_X + 1, y: 1, w: 1, label: 'Home', small: true },
+  { code: 'KEY_PAGEUP', x: NAV_X + 2, y: 1, w: 1, label: 'PgUp', small: true },
+  { code: 'KEY_DELETE', x: NAV_X, y: 2, w: 1, label: 'Del', small: true },
+  { code: 'KEY_END', x: NAV_X + 1, y: 2, w: 1, label: 'End', small: true },
+  { code: 'KEY_PAGEDOWN', x: NAV_X + 2, y: 2, w: 1, label: 'PgDn', small: true },
+  { code: 'KEY_UP', x: NAV_X + 1, y: 4, w: 1, label: '↑' },
+  { code: 'KEY_LEFT', x: NAV_X, y: 5, w: 1, label: '←' },
+  { code: 'KEY_DOWN', x: NAV_X + 1, y: 5, w: 1, label: '↓' },
+  { code: 'KEY_RIGHT', x: NAV_X + 2, y: 5, w: 1, label: '→' },
+]
+
+export const KEYBOARD: KeyDef[] = [
+  ...fRow, ...numRow, ...topRow, ...homeRow, ...bottomRow, ...modRow, ...navCluster,
+]
+
+export const KEYBOARD_UNITS_W = NAV_X + 3 // total width in key units
+export const KEYBOARD_ROWS = 6
+
+// Human-readable label for any evdev code (used in lists / tooltips).
+const LABEL_BY_CODE: Record<string, string> = Object.fromEntries(
+  KEYBOARD.map((k) => [k.code, k.label || 'Space']),
+)
+
+export function keyLabel(code: string): string {
+  if (LABEL_BY_CODE[code]) return LABEL_BY_CODE[code]
+  return code.replace(/^KEY_/, '').replace(/^KP/, 'Num ')
 }

@@ -1,70 +1,102 @@
 <script lang="ts">
-  import { state } from '../stores.svelte'
-  import { KEY_MAP, KEY_ORDER, getColor, SVG_CONFIG } from '../keymap'
+  import { state as app } from '../stores.svelte'
+  import { KEYBOARD, KEYBOARD_UNITS_W, KEYBOARD_ROWS, keyLabel } from '../keymap'
+  import { sequential } from '../palette'
 
-  const s = $derived(state.stats)
+  const UNIT = 46
+  const GAP = 4
+  const svgW = KEYBOARD_UNITS_W * UNIT
+  const svgH = KEYBOARD_ROWS * UNIT
+
+  const s = $derived(app.stats)
+  const mode = $derived(app.theme)
   const maxCount = $derived(Math.max(...Object.values(s.keyCounts), 1))
 
-  const rows = $derived.by(() => {
-    const r: { y: number; keys: { x: number; w: number; label: string; count: number; color: string }[] }[] = []
-    for (let row = 0; row < 5; row++) {
-      const keys = KEY_ORDER
-        .filter((k) => KEY_MAP[k].row === row)
-        .map((k) => {
-          const m = KEY_MAP[k]
-          const count = s.keyCounts[k] || 0
-          return {
-            x: m.col * (SVG_CONFIG.keyW + SVG_CONFIG.gap),
-            w: m.w * SVG_CONFIG.keyW + (m.w - 1) * SVG_CONFIG.gap,
-            label: m.label,
-            count,
-            color: getColor(count, maxCount),
-          }
-        })
-      r.push({ y: row * (SVG_CONFIG.keyH + SVG_CONFIG.gap), keys })
-    }
-    return r
-  })
+  // Perceptual spread: low counts are lifted so they stay visible.
+  function ratio(count: number): number {
+    return count <= 0 ? 0 : Math.sqrt(count / maxCount)
+  }
 
-  const svgW = 14 * SVG_CONFIG.colW
-  const svgH = 5 * SVG_CONFIG.rowH
+  const keys = $derived(
+    KEYBOARD.map((k) => {
+      const count = s.keyCounts[k.code] || 0
+      const r = ratio(count)
+      return {
+        ...k,
+        count,
+        fill: count > 0 ? sequential(r, mode) : 'var(--zero)',
+        textFill: count > 0 ? (r > 0.5 ? '#fff' : 'var(--ink)') : 'var(--muted)',
+        pct: s.totalPresses > 0 ? (count / s.totalPresses) * 100 : 0,
+      }
+    }),
+  )
+
+  let hovered = $state<{ label: string; count: number; pct: number } | null>(null)
+  let tip = $state({ x: 0, y: 0 })
+  let wrap: HTMLDivElement
+
+  function onMove(e: MouseEvent) {
+    if (!wrap) return
+    const rect = wrap.getBoundingClientRect()
+    tip = { x: e.clientX - rect.left, y: e.clientY - rect.top }
+  }
 </script>
 
-<div class="overflow-x-auto">
-  <svg
-    width={svgW}
-    height={svgH}
-    viewBox="0 0 {svgW} {svgH}"
-    class="min-w-[700px]"
-  >
-    {#each rows as row}
-      {#each row.keys as key (key.label + row.y)}
-        <g>
+<div class="card p-5">
+  <div class="mb-4 flex items-center justify-between">
+    <h2 class="text-sm font-semibold uppercase tracking-wide" style="color: var(--ink-2)">Key Heatmap</h2>
+    <!-- Sequential legend -->
+    <div class="flex items-center gap-2 text-xs" style="color: var(--muted)">
+      <span>0</span>
+      <div class="h-2.5 w-32 rounded-full"
+        style="background: linear-gradient(90deg, var(--zero), {sequential(0.35, mode)}, {sequential(0.7, mode)}, {sequential(1, mode)})">
+      </div>
+      <span class="tabular-nums">{maxCount.toLocaleString()}</span>
+    </div>
+  </div>
+
+  <div bind:this={wrap} class="relative overflow-x-auto" role="img" aria-label="Keyboard heatmap"
+       onmousemove={onMove} onmouseleave={() => (hovered = null)}>
+    <svg viewBox="0 0 {svgW} {svgH}" width={svgW} height={svgH} class="min-w-[760px] max-w-full h-auto">
+      {#each keys as k (k.code)}
+        <g role="presentation"
+           onmouseenter={() => (hovered = { label: keyLabel(k.code), count: k.count, pct: k.pct })}>
           <rect
-            x={key.x}
-            y={row.y}
-            width={key.w - SVG_CONFIG.gap}
-            height={SVG_CONFIG.keyH - SVG_CONFIG.gap}
-            rx={SVG_CONFIG.rx}
-            fill={key.color}
-            class="transition-colors duration-200"
+            x={k.x * UNIT + GAP / 2}
+            y={k.y * UNIT + GAP / 2}
+            width={k.w * UNIT - GAP}
+            height={UNIT - GAP}
+            rx="7"
+            fill={k.fill}
+            stroke="var(--border)"
+            stroke-width="1"
+            class="cursor-default transition-[fill] duration-200"
           />
-          {#if key.label}
-            <text
-              x={key.x + (key.w - SVG_CONFIG.gap) / 2}
-              y={row.y + (SVG_CONFIG.keyH - SVG_CONFIG.gap) / 2 + SVG_CONFIG.fontSize / 3}
-              text-anchor="middle"
-              font-size={SVG_CONFIG.fontSize}
-              fill={key.count > 0 ? '#fff' : '#6b7280'}
-              font-family="system-ui, sans-serif"
-              pointer-events="none"
-            >
-              {key.label}
-            </text>
-          {/if}
-          <title>{key.count > 0 ? `${key.label || 'Space'}: ${key.count} presses` : key.label || 'Space'}</title>
+          <text
+            x={k.x * UNIT + (k.w * UNIT) / 2}
+            y={k.y * UNIT + UNIT / 2}
+            text-anchor="middle"
+            dominant-baseline="central"
+            font-size={k.small ? 10 : 14}
+            font-weight="600"
+            fill={k.textFill}
+            font-family="system-ui, sans-serif"
+            pointer-events="none"
+          >{k.label}</text>
         </g>
       {/each}
-    {/each}
-  </svg>
+    </svg>
+
+    {#if hovered}
+      <div class="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-full rounded-lg px-2.5 py-1.5 text-xs shadow-lg"
+        style="left: {tip.x}px; top: {tip.y - 8}px; background: var(--ink); color: var(--surface)">
+        <span class="font-semibold">{hovered.label}</span>
+        {#if hovered.count > 0}
+          · {hovered.count.toLocaleString()} · {hovered.pct.toFixed(1)}%
+        {:else}
+          · no presses
+        {/if}
+      </div>
+    {/if}
+  </div>
 </div>

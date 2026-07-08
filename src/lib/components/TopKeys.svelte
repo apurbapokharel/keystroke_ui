@@ -1,47 +1,35 @@
 <script lang="ts">
   import { state } from '../stores.svelte'
+  import type { KeyStat } from '../types'
 
   const s = $derived(state.stats)
   const maxTop = $derived(s.topKeys[0]?.count || 1)
+  const maxBottom = $derived(Math.max(...s.bottomKeys.map((k) => k.count), 1))
 </script>
 
-<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-  <div>
-    <h3 class="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Top 10 Keys</h3>
-    <div class="space-y-2">
-      {#each s.topKeys as key, i}
-        <div class="flex items-center gap-3">
-          <span class="w-5 text-right text-sm text-gray-400 tabular-nums">{i + 1}</span>
-          <span class="w-10 text-sm font-semibold text-gray-800">{key.label || '␣'}</span>
-          <div class="flex-1 h-5 rounded-full bg-gray-100 overflow-hidden">
-            <div
-              class="h-full rounded-full transition-all duration-300"
-              style="width: {(key.count / maxTop) * 100}%; background: #6366f1"
-            ></div>
+<div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+  {#snippet list(title: string, keys: KeyStat[], max: number, fill: string, showPct: boolean)}
+    <div class="card p-5">
+      <h3 class="mb-3 text-sm font-semibold uppercase tracking-wide" style="color: var(--ink-2)">{title}</h3>
+      <div class="space-y-1.5">
+        {#each keys as k, i}
+          <div class="flex items-center gap-3">
+            <span class="w-4 text-right text-xs tabular-nums" style="color: var(--muted)">{i + 1}</span>
+            <span class="w-12 truncate text-sm font-semibold" style="color: var(--ink)">{k.label}</span>
+            <div class="h-4 flex-1 overflow-hidden rounded-md" style="background: var(--surface-2)">
+              <div class="h-full rounded-md transition-all duration-300"
+                style="width: {Math.max((k.count / max) * 100, 2)}%; background: {fill}"></div>
+            </div>
+            <span class="w-16 text-right text-sm tabular-nums" style="color: var(--ink-2)">{k.count.toLocaleString()}</span>
+            {#if showPct}
+              <span class="w-12 text-right text-xs tabular-nums" style="color: var(--muted)">{k.percentage.toFixed(1)}%</span>
+            {/if}
           </div>
-          <span class="w-20 text-right text-sm text-gray-600 tabular-nums">{key.count.toLocaleString()}</span>
-          <span class="w-14 text-right text-xs text-gray-400 tabular-nums">({key.percentage.toFixed(1)}%)</span>
-        </div>
-      {/each}
+        {/each}
+      </div>
     </div>
-  </div>
+  {/snippet}
 
-  <div>
-    <h3 class="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Least 10 Keys (letters)</h3>
-    <div class="space-y-2">
-      {#each s.bottomKeys as key, i}
-        <div class="flex items-center gap-3">
-          <span class="w-5 text-right text-sm text-gray-400 tabular-nums">{i + 1}</span>
-          <span class="w-10 text-sm font-semibold text-gray-800">{key.label}</span>
-          <div class="flex-1 h-5 rounded-full bg-gray-100 overflow-hidden">
-            <div
-              class="h-full rounded-full transition-all duration-300"
-              style="width: {(key.count / maxTop) * 100}%; background: #f59e0b"
-            ></div>
-          </div>
-          <span class="w-20 text-right text-sm text-gray-600 tabular-nums">{key.count.toLocaleString()}</span>
-        </div>
-      {/each}
-    </div>
-  </div>
+  {@render list(`Top ${s.topKeys.length} Keys`, s.topKeys, maxTop, 'var(--accent)', true)}
+  {@render list('Least Used Letters', s.bottomKeys, maxBottom, 'var(--axis)', false)}
 </div>
