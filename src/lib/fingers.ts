@@ -83,6 +83,63 @@ export function fingerOf(code: string, profile: FingerProfile = 'standard'): Fin
   return MAPS[profile][code] ?? null
 }
 
+// Thumb keys that belong to the *right* thumb cluster (corne). Everything else
+// mapped to 'thumb' (space, left-ctrl, left-meta) is the left thumb.
+const RIGHT_THUMB = new Set(['KEY_ENTER', 'KEY_RIGHTCTRL', 'KEY_RIGHTMETA'])
+
+// Split the merged thumb bucket into left/right for a given profile. Only codes
+// the profile actually maps to 'thumb' are counted, so the split stays in sync
+// with fingerLoad().thumb (left + right === load.thumb).
+export function thumbSplit(
+  keyCounts: Record<string, number>,
+  profile: FingerProfile = 'standard',
+): { left: number; right: number } {
+  const map = MAPS[profile]
+  let left = 0
+  let right = 0
+  for (const [code, count] of Object.entries(keyCounts)) {
+    if (map[code] !== 'thumb') continue
+    if (RIGHT_THUMB.has(code)) right += count
+    else left += count
+  }
+  return { left, right }
+}
+
+// ── Hand balance (overview) ──────────────────────────────────────────
+// Toggleable left/right split. Three independent parts the user can include:
+//   standard  — letters, digits, punctuation (hand from the standard map)
+//   backspace — right hand (user hits it with right index)
+//   thumb     — Space → left, Enter → right
+const DIGIT_CODES = new Set(['KEY_1', 'KEY_2', 'KEY_3', 'KEY_4', 'KEY_5', 'KEY_6', 'KEY_7', 'KEY_8', 'KEY_9', 'KEY_0'])
+const PUNCT_CODES = new Set([
+  'KEY_MINUS', 'KEY_EQUAL', 'KEY_LEFTBRACE', 'KEY_RIGHTBRACE', 'KEY_BACKSLASH',
+  'KEY_SEMICOLON', 'KEY_APOSTROPHE', 'KEY_GRAVE', 'KEY_COMMA', 'KEY_DOT', 'KEY_SLASH',
+])
+
+export type HandPart = 'standard' | 'backspace' | 'thumb'
+
+export function handBalance(
+  keyCounts: Record<string, number>,
+  include: Set<HandPart>,
+): { left: number; right: number } {
+  let left = 0
+  let right = 0
+  for (const [code, count] of Object.entries(keyCounts)) {
+    if (!count) continue
+    if (code === 'KEY_SPACE') { if (include.has('thumb')) left += count; continue }
+    if (code === 'KEY_ENTER') { if (include.has('thumb')) right += count; continue }
+    if (code === 'KEY_BACKSPACE') { if (include.has('backspace')) right += count; continue }
+    if (!include.has('standard')) continue
+    const isStd = /^KEY_[A-Z]$/.test(code) || DIGIT_CODES.has(code) || PUNCT_CODES.has(code)
+    if (!isStd) continue
+    const f = STANDARD_MAP[code]
+    if (!f || f === 'thumb') continue
+    if (handOf(f) === 'left') left += count
+    else right += count
+  }
+  return { left, right }
+}
+
 // Sum presses onto each finger from a per-code count map, for a given profile.
 export function fingerLoad(
   keyCounts: Record<string, number>,

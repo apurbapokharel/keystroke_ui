@@ -1,9 +1,35 @@
 <script lang="ts">
-  import { state } from '../stores.svelte'
+  import { state as app } from '../stores.svelte'
   import { sequential } from '../palette'
+  import { handBalance, type HandPart } from '../fingers'
 
-  const s = $derived(state.stats)
-  const mode = $derived(state.theme)
+  const s = $derived(app.stats)
+  const mode = $derived(app.theme)
+
+  // Hand-balance parts the user can include/exclude (persisted).
+  const HAND_PARTS: { id: HandPart; label: string }[] = [
+    { id: 'standard', label: 'Letters/digits/punct' },
+    { id: 'backspace', label: 'Backspace' },
+    { id: 'thumb', label: 'Thumbs' },
+  ]
+  const savedParts = (() => {
+    try {
+      const raw = localStorage.getItem('handParts')
+      if (raw) return new Set(JSON.parse(raw) as HandPart[])
+    } catch { /* ignore */ }
+    return new Set<HandPart>(['standard'])
+  })()
+  let parts = $state<Set<HandPart>>(savedParts)
+  function togglePart(p: HandPart) {
+    const next = new Set(parts)
+    next.has(p) ? next.delete(p) : next.add(p)
+    parts = next
+    try { localStorage.setItem('handParts', JSON.stringify([...next])) } catch { /* ignore */ }
+  }
+
+  const balance = $derived(handBalance(s.keyCounts, parts))
+  const balTotal = $derived(balance.left + balance.right)
+  const leftPct = $derived(balTotal > 0 ? (balance.left / balTotal) * 100 : 50)
 
   const catLabels: Record<string, string> = {
     letters: 'Letters', digits: 'Digits', whitespace: 'Space / Tab / Enter',
@@ -42,23 +68,37 @@
   <div class="space-y-4">
     <!-- Hand balance -->
     <div class="card p-5">
-      <div class="mb-3 flex items-center justify-between">
+      <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h3 class="text-sm font-semibold uppercase tracking-wide" style="color: var(--ink-2)">Hand Balance</h3>
-        <span class="text-xs" style="color: var(--muted)">letters & punctuation only</span>
-      </div>
-      <div class="flex h-6 w-full overflow-hidden rounded-md">
-        <div class="flex items-center justify-start pl-2 text-xs font-semibold text-white"
-          style="width: {s.leftHandPercent}%; background: {sequential(0.7, mode)}">
-          {s.leftHandPercent.toFixed(0)}%
+        <div class="flex flex-wrap gap-1.5">
+          {#each HAND_PARTS as p}
+            {@const on = parts.has(p.id)}
+            <button onclick={() => togglePart(p.id)}
+              class="rounded-full px-2.5 py-0.5 text-[11px] font-medium transition"
+              style="background: var(--surface-2); color: {on ? 'var(--ink)' : 'var(--muted)'}; opacity: {on ? 1 : 0.55}; border: 1px solid var(--border)">
+              {p.label}
+            </button>
+          {/each}
         </div>
-        <div class="flex items-center justify-end pr-2 text-xs font-semibold text-white"
-          style="width: {100 - s.leftHandPercent}%; background: #1baf7a">
-          {(100 - s.leftHandPercent).toFixed(0)}%
+      </div>
+      {#if balTotal === 0}
+        <p class="py-3 text-center text-xs" style="color: var(--muted)">No presses for the selected parts.</p>
+      {:else}
+        <div class="flex h-6 w-full overflow-hidden rounded-md">
+          <div class="flex items-center justify-start pl-2 text-xs font-semibold text-white"
+            style="width: {leftPct}%; background: {sequential(0.7, mode)}">
+            {leftPct.toFixed(0)}%
+          </div>
+          <div class="flex items-center justify-end pr-2 text-xs font-semibold text-white"
+            style="width: {100 - leftPct}%; background: #1baf7a">
+            {(100 - leftPct).toFixed(0)}%
+          </div>
         </div>
-      </div>
-      <div class="mt-1.5 flex justify-between text-xs" style="color: var(--muted)">
-        <span>Left hand</span><span>Right hand</span>
-      </div>
+        <div class="mt-1.5 flex justify-between text-xs" style="color: var(--muted)">
+          <span>Left · {balance.left.toLocaleString()}</span>
+          <span>Right · {balance.right.toLocaleString()}</span>
+        </div>
+      {/if}
     </div>
 
     <!-- Activity by hour of day -->
