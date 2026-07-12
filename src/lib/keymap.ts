@@ -102,12 +102,76 @@ export const KEYBOARD: KeyDef[] = [
 export const KEYBOARD_UNITS_W = NAV_X + 3 // total width in key units
 export const KEYBOARD_ROWS = 6
 
+// ── Split columnar (Corne-style) layout ─────────────────────────────
+// Straight ortholinear grid, two halves with a center gap. Rows: F, number,
+// top, home, bottom (+ thumb). evdev codes match the physical keys. Layer keys
+// carry a LAYER* code (no data) and render greyed.
+function k(code: string, x: number, y: number, label: string, small = false, w = U): KeyDef {
+  return { code, x, y, w, label, small }
+}
+
+// Left columns 0..6, gap, right columns 8..14. Rows: F=0, num=1, top=2, home=3, bottom=4, thumb=5.
+const LO = 0, LC1 = 1, LC5 = 5, LI = 6
+const RI = 8, RC1 = 9, RC5 = 13, RO = 14
+
+const splitLeft: KeyDef[] = [
+  // F row: F11 on the outer column, F1–F5 on the finger columns
+  k('KEY_F11', LO, 0, 'F11', true),
+  ...run(0, LC1, [['KEY_F1', 'F1'], ['KEY_F2', 'F2'], ['KEY_F3', 'F3'], ['KEY_F4', 'F4'], ['KEY_F5', 'F5']]).map((d) => ({ ...d, small: true })),
+  // Number row
+  ...run(1, LC1, [['KEY_1', '1'], ['KEY_2', '2'], ['KEY_3', '3'], ['KEY_4', '4'], ['KEY_5', '5']]),
+  // Top / home / bottom letter rows, with outer + inner extras
+  k('KEY_ESC', LO, 2, 'Esc', true),
+  ...run(2, LC1, [['KEY_Q', 'Q'], ['KEY_W', 'W'], ['KEY_E', 'E'], ['KEY_R', 'R'], ['KEY_T', 'T']]),
+  k('KEY_LEFTALT', LI, 2, 'Alt', true),
+  k('KEY_CAPSLOCK', LO, 3, 'Caps', true),
+  ...run(3, LC1, [['KEY_A', 'A'], ['KEY_S', 'S'], ['KEY_D', 'D'], ['KEY_F', 'F'], ['KEY_G', 'G']]),
+  k('KEY_TAB', LI, 3, 'Tab', true),
+  k('KEY_LEFTSHIFT', LO, 4, 'Shift', true),
+  ...run(4, LC1, [['KEY_Z', 'Z'], ['KEY_X', 'X'], ['KEY_C', 'C'], ['KEY_V', 'V'], ['KEY_B', 'B']]),
+  // Thumb cluster
+  k('KEY_LEFTCTRL', 4, 5, 'Ctrl', true),
+  k('LAYER1', 5, 5, 'L1', true),
+  k('KEY_SPACE', LI, 5, 'Space', true),
+]
+
+const splitRight: KeyDef[] = [
+  // F row: F6–F10 on finger columns, F12 on the outer column
+  ...run(0, RC1, [['KEY_F6', 'F6'], ['KEY_F7', 'F7'], ['KEY_F8', 'F8'], ['KEY_F9', 'F9'], ['KEY_F10', 'F10']]).map((d) => ({ ...d, small: true })),
+  k('KEY_F12', RO, 0, 'F12', true),
+  // Number row
+  ...run(1, RC1, [['KEY_6', '6'], ['KEY_7', '7'], ['KEY_8', '8'], ['KEY_9', '9'], ['KEY_0', '0']]),
+  // Letter rows, inner extras (Bksp/Shift) + outer extras (Alt/"/Del)
+  k('KEY_BACKSPACE', RI, 2, 'Bksp', true),
+  ...run(2, RC1, [['KEY_Y', 'Y'], ['KEY_U', 'U'], ['KEY_I', 'I'], ['KEY_O', 'O'], ['KEY_P', 'P']]),
+  k('KEY_RIGHTALT', RO, 2, 'Alt', true),
+  k('KEY_RIGHTSHIFT', RI, 3, 'Shift', true),
+  ...run(3, RC1, [['KEY_H', 'H'], ['KEY_J', 'J'], ['KEY_K', 'K'], ['KEY_L', 'L'], ['KEY_SEMICOLON', ';']]),
+  k('KEY_APOSTROPHE', RO, 3, "'"),
+  ...run(4, RC1, [['KEY_N', 'N'], ['KEY_M', 'M'], ['KEY_COMMA', ','], ['KEY_DOT', '.'], ['KEY_SLASH', '/']]),
+  k('KEY_DELETE', RO, 4, 'Del', true),
+  // Thumb cluster
+  k('KEY_ENTER', RI, 5, 'Enter', true),
+  k('LAYER2', RC1, 5, 'L1', true),
+  k('KEY_RIGHTMETA', 10, 5, 'Win', true),
+]
+
+export const KEYBOARD_SPLIT: KeyDef[] = [...splitLeft, ...splitRight]
+export const KEYBOARD_SPLIT_UNITS_W = RO + 1
+export const KEYBOARD_SPLIT_ROWS = 6
+
+// Layer keys carry no keystroke data — render them as inert placeholders.
+export function isLayerKey(code: string): boolean {
+  return code.startsWith('LAYER')
+}
+
 // Human-readable label for any evdev code (used in lists / tooltips).
 const LABEL_BY_CODE: Record<string, string> = Object.fromEntries(
   KEYBOARD.map((k) => [k.code, k.label || 'Space']),
 )
 
 export function keyLabel(code: string): string {
+  if (isLayerKey(code)) return 'Layer'
   if (LABEL_BY_CODE[code]) return LABEL_BY_CODE[code]
   return code.replace(/^KEY_/, '').replace(/^KP/, 'Num ')
 }

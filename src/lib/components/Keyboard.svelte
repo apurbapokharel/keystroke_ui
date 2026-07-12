@@ -1,12 +1,29 @@
 <script lang="ts">
   import { state as app } from '../stores.svelte'
-  import { KEYBOARD, KEYBOARD_UNITS_W, KEYBOARD_ROWS, keyLabel } from '../keymap'
+  import {
+    KEYBOARD, KEYBOARD_UNITS_W, KEYBOARD_ROWS,
+    KEYBOARD_SPLIT, KEYBOARD_SPLIT_UNITS_W, KEYBOARD_SPLIT_ROWS,
+    isLayerKey, keyLabel,
+  } from '../keymap'
   import { sequential } from '../palette'
+
+  type Layout = 'chorne' | 'standard'
+  const LAYOUTS: { id: Layout; label: string }[] = [
+    { id: 'chorne', label: 'Chorne (split)' },
+    { id: 'standard', label: 'Standard' },
+  ]
+  const savedLayout = (typeof localStorage !== 'undefined' && localStorage.getItem('kbLayout')) as Layout | null
+  let layout = $state<Layout>(savedLayout ?? 'chorne')
+  function setLayout(l: Layout) {
+    layout = l
+    try { localStorage.setItem('kbLayout', l) } catch { /* ignore */ }
+  }
 
   const UNIT = 46
   const GAP = 4
-  const svgW = KEYBOARD_UNITS_W * UNIT
-  const svgH = KEYBOARD_ROWS * UNIT
+  const active = $derived(layout === 'chorne' ? KEYBOARD_SPLIT : KEYBOARD)
+  const svgW = $derived((layout === 'chorne' ? KEYBOARD_SPLIT_UNITS_W : KEYBOARD_UNITS_W) * UNIT)
+  const svgH = $derived((layout === 'chorne' ? KEYBOARD_SPLIT_ROWS : KEYBOARD_ROWS) * UNIT)
 
   const s = $derived(app.stats)
   const mode = $derived(app.theme)
@@ -18,14 +35,16 @@
   }
 
   const keys = $derived(
-    KEYBOARD.map((k) => {
-      const count = s.keyCounts[k.code] || 0
+    active.map((k) => {
+      const layer = isLayerKey(k.code)
+      const count = layer ? 0 : (s.keyCounts[k.code] || 0)
       const r = ratio(count)
       return {
         ...k,
+        layer,
         count,
-        fill: count > 0 ? sequential(r, mode) : 'var(--zero)',
-        textFill: count > 0 ? (r > 0.5 ? '#fff' : 'var(--ink)') : 'var(--muted)',
+        fill: layer ? 'var(--surface-2)' : count > 0 ? sequential(r, mode) : 'var(--zero)',
+        textFill: layer ? 'var(--muted)' : count > 0 ? (r > 0.5 ? '#fff' : 'var(--ink)') : 'var(--muted)',
         pct: s.totalPresses > 0 ? (count / s.totalPresses) * 100 : 0,
       }
     }),
@@ -43,15 +62,27 @@
 </script>
 
 <div class="card p-5">
-  <div class="mb-4 flex items-center justify-between">
+  <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
     <h2 class="text-sm font-semibold uppercase tracking-wide" style="color: var(--ink-2)">Key Heatmap</h2>
-    <!-- Sequential legend -->
-    <div class="flex items-center gap-2 text-xs" style="color: var(--muted)">
-      <span>0</span>
-      <div class="h-2.5 w-32 rounded-full"
-        style="background: linear-gradient(90deg, var(--zero), {sequential(0.35, mode)}, {sequential(0.7, mode)}, {sequential(1, mode)})">
+    <div class="flex items-center gap-3">
+      <!-- Layout toggle -->
+      <div class="flex rounded-lg p-0.5 text-xs" style="background: var(--surface-2)">
+        {#each LAYOUTS as l}
+          <button onclick={() => setLayout(l.id)}
+            class="rounded-md px-2.5 py-1 transition"
+            style="{layout === l.id ? 'background: var(--accent); color: white' : 'color: var(--ink-2)'}">
+            {l.label}
+          </button>
+        {/each}
       </div>
-      <span class="tabular-nums">{maxCount.toLocaleString()}</span>
+      <!-- Sequential legend -->
+      <div class="flex items-center gap-2 text-xs" style="color: var(--muted)">
+        <span>0</span>
+        <div class="h-2.5 w-24 rounded-full"
+          style="background: linear-gradient(90deg, var(--zero), {sequential(0.35, mode)}, {sequential(0.7, mode)}, {sequential(1, mode)})">
+        </div>
+        <span class="tabular-nums">{maxCount.toLocaleString()}</span>
+      </div>
     </div>
   </div>
 
