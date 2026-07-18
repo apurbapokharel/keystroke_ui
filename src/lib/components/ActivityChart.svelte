@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte'
-  import { state } from '../stores.svelte'
+  import { state as app } from '../stores.svelte'
   import { formatDuration } from '../format'
   import { Chart, registerables, type ChartConfiguration, type ChartDataset } from 'chart.js'
 
@@ -29,9 +29,9 @@
   }
 
   $effect(() => {
-    const s = state.stats
-    const hosts = state.machineNames
-    const dark = state.theme === 'dark'
+    const s = app.stats
+    const hosts = app.machineNames
+    const dark = app.theme === 'dark'
     const c = themeColors(dark)
     // If there's no active-time data in range, fall back to keystrokes only.
     const m: Mode = s.hasActiveData ? mode : 'keys'
@@ -40,7 +40,7 @@
     const labels = s.timeSeries.map((b) => b.label)
     const activeSecs = s.timeSeries.map((b) => b.activeSeconds)
     // Minutes at hour grain, hours at day+ grain — keeps the axis readable.
-    const grain = state.range?.grain ?? 'hour'
+    const grain = app.range?.grain ?? 'hour'
     const inHours = grain !== 'hour'
     const activeDisplay = activeSecs.map((sec) => (inHours ? sec / 3600 : sec / 60))
     const activeUnit = inHours ? 'h' : 'min'
@@ -49,7 +49,7 @@
       type: 'bar',
       label: host,
       data: s.timeSeries.map((b) => b.byHost[host] || 0),
-      backgroundColor: state.colorFor(host),
+      backgroundColor: app.colorFor(host),
       borderColor: c.surface,
       borderWidth: { top: 0, right: 0, bottom: 0, left: 0 },
       borderRadius: 3,
@@ -160,7 +160,7 @@
     <h2 class="text-sm font-semibold uppercase tracking-wide" style="color: var(--ink-2)">
       Activity Over Time
     </h2>
-    {#if state.stats.hasActiveData}
+    {#if app.stats.hasActiveData}
       <div class="flex gap-1 rounded-lg p-0.5" style="background: var(--surface-2)">
         {#each MODES as md}
           <button onclick={() => (mode = md.id)}
