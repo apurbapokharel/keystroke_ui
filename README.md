@@ -17,7 +17,17 @@ fetches it at runtime and renders everything client-side. No backend.
 - **Key heatmap** — full physical keyboard (keybr-style) including the **F1–F12
   function row**, modifiers, and a navigation cluster, colored by press frequency
   with a perceptual sequential ramp and hover tooltips.
-- **Keystrokes over time** — stacked bar chart broken down by device.
+- **Activity over time** — stacked bar chart broken down by device, with a
+  **Keystrokes / Active time / Both** toggle. "Both" overlays active screen-time
+  as a line on a second axis so you can see typing volume against time at the
+  keyboard. Active time buckets on the same grain as keystrokes (hour → month).
+- **Mouse** *(dedicated tab)* — lifetime travel distance (inches → miles), total
+  clicks with a left / right / middle split, scroll ticks, plus clicks-over-time
+  and travel-over-time charts. A compact mouse strip also appears on the Overview
+  at day-and-up grains. (Mouse totals have no hour resolution — they're a per-day
+  figure — so mouse charts only bucket per day / week / month.)
+- **Active screen-time** — surfaced on the Overview: total awake-and-unlocked
+  time and a keys-per-active-minute rate, alongside the toggle above.
 - **Device breakdown** — donut + per-device counts, share %, and each device's
   top key, plus a combined 100% share bar.
 - **Top / least-used keys** ranked lists.
@@ -36,13 +46,39 @@ fetches it at runtime and renders everything client-side. No backend.
 3. Files are merged and aggregated client-side into per-key, per-device, and
    per-time-bucket stats.
 
-### JSON format consumed
+### JSON format consumed (v1 and v2)
+
+The tracker has written two on-disk schemas. Both are supported — every file is
+run through `normalize()` (`src/lib/api.ts`) at the fetch boundary into one
+canonical shape, so the rest of the app never branches on version.
+
+**v1** — keyboard only:
 
 ```json
 { "version": 1, "count_freq": { "14": { "KEY_H": 32, "KEY_SPACE": 144 } } }
 ```
 
-Outer key = hour (`"0"`–`"23"`), inner key = evdev code, value = press count.
+**v2** — keyboard renamed to `keyboard_state`, plus mouse and active screen-time:
+
+```json
+{
+  "version": 2,
+  "keyboard_state": { "14": { "KEY_H": 32, "KEY_SPACE": 144 } },
+  "mouse_state": { "left_click": 812, "right_click": 96, "middle_click": 4,
+                   "mouse_inches": 40312.5, "mouse_scrolls": 1503 },
+  "display_state": { "14": 3600, "15": 2750 }
+}
+```
+
+- **Keyboard** — `count_freq` (v1) and `keyboard_state` (v2) share the identical
+  `{ hour: { evdev_code: count } }` inner shape; only the field name changed.
+  Outer key = hour (`"0"`–`"23"`), inner key = evdev code, value = press count.
+- **`mouse_state`** — one flat total per file (no hour dimension). Absent in v1.
+- **`display_state`** — active screen-time as `{ hour: seconds }`. Absent in v1.
+
+v1 files simply render with no mouse / active-time views; v2 files light them up.
+The per-file `localStorage` cache is namespaced `ks:v2:` so upgrading never
+serves a stale un-normalized entry.
 
 ## Configuration
 
@@ -59,3 +95,10 @@ npm run check    # type-check
 ```
 
 Deployed to GitHub Pages via `.github/workflows/deploy.yml` on push to `main`.
+The workflow runs `npm ci && npm run build` on the runner and publishes the
+resulting `dist/` — it builds from source, so you never commit build output
+(`dist` is gitignored). A push therefore deploys even without a local build, but
+a **build-breaking** change fails the deploy job (the previous live site stays
+up until it's fixed). Note the workflow runs `build` only, not `check`, and
+`vite build` strips types without type-checking — so run `npm run check` locally
+to catch type errors the deploy won't.

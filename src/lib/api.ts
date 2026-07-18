@@ -1,9 +1,39 @@
 import { CONFIG, LETTER_KEYS, HOME_ROW_KEYS, KEY_SETS, categoryOf } from './config'
 import type {
-  KeystrokeData, KeystrokeFile, ManifestEntry, TimeRange, Grain,
+  RawFile, NormalizedData, MouseTotals, MouseBucket,
+  KeystrokeFile, ManifestEntry, TimeRange, Grain,
   AggregatedStats, KeyStat, TimeBucket, DeviceStat,
 } from './types'
 import { keyLabel } from './keymap'
+
+// ── Version normalization ───────────────────────────────────────────
+// Map either on-disk schema (v1 `count_freq`, or v2
+// `keyboard_state`/`mouse_state`/`display_state`) onto one canonical shape.
+// Everything downstream reads NormalizedData and never branches on version.
+export function normalize(raw: RawFile): NormalizedData {
+  // Keyboard: v2 renamed `count_freq` → `keyboard_state`; the inner
+  // {hour: {KEY: count}} shape is identical, so this is a pure field alias.
+  const keyboard = raw.keyboard_state ?? raw.count_freq ?? {}
+
+  // Mouse & active only exist from v2 on. Absent ⇒ null (not zeroes) so the UI
+  // can distinguish "no mouse hardware/old file" from "a real zero".
+  const ms = raw.mouse_state
+  const mouse: MouseTotals | null = ms
+    ? {
+        leftClick: ms.left_click ?? 0,
+        rightClick: ms.right_click ?? 0,
+        middleClick: ms.middle_click ?? 0,
+        inches: ms.mouse_inches ?? 0,
+        scrolls: ms.mouse_scrolls ?? 0,
+      }
+    : null
+  const active = raw.display_state ?? null
+
+  const version = raw.version ?? (raw.keyboard_state ? 2 : 1)
+  return { version, keyboard, mouse, active }
+}
+
+export const INCHES_PER_MILE = 63_360
 
 // ── Date helpers (UTC, string-based to dodge timezone drift) ────────
 export function parseDate(s: string): Date {
@@ -54,11 +84,13 @@ export async function fetchManifest(): Promise<Manifest> {
 
 // ── File fetch with a small localStorage cache ──────────────────────
 async function fetchFile(date: string, host: string): Promise<KeystrokeFile | null> {
-  const cacheKey = `ks:${date}:${host}`
+  // Cache key bumped to :v2 — entries cached under the old key held the raw v1
+  // shape; a fresh namespace avoids feeding stale un-normalized data downstream.
+  const cacheKey = `ks:v2:${date}:${host}`
   try {
     const cached = localStorage.getItem(cacheKey)
     if (cached) {
-      const { t, data } = JSON.parse(cached)
+      const { t, data } = JSON.parse(cached) as { t: number; data: NormalizedData }
       if (Date.now() - t < CONFIG.cacheTtlMs) return { date, hostname: host, data }
     }
   } catch { /* ignore cache errors */ }
@@ -67,7 +99,7 @@ async function fetchFile(date: string, host: string): Promise<KeystrokeFile | nu
   try {
     const res = await fetch(url)
     if (!res.ok) return null
-    const data: KeystrokeData = await res.json()
+    const data = normalize((await res.json()) as RawFile)
     try { localStorage.setItem(cacheKey, JSON.stringify({ t: Date.now(), data })) } catch { /* quota */ }
     return { date, hostname: host, data }
   } catch {
@@ -106,6 +138,25 @@ function bucketKeyAndLabel(date: string, hour: number, grain: Grain, singleDay: 
   }
 }
 
+// Mouse totals are per-file (per day), with no hour dimension. Bucket them by
+// date at the range's grain — at 'hour' grain that collapses to one bar/day.
+function mouseBucketKeyAndLabel(date: string, grain: Grain): [string, string] {
+  switch (grain) {
+    case 'hour':
+    case 'day':
+      return [date, shortDay(date)]
+    case 'week': {
+      const wk = mondayOf(date)
+      return [wk, `Wk ${shortDay(wk)}`]
+    }
+    case 'month': {
+      const ym = date.slice(0, 7)
+      const d = parseDate(date)
+      return [ym, `${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`]
+    }
+  }
+}
+
 function ratioStat(code: string, count: number, total: number): KeyStat {
   return { code, label: keyLabel(code), count, percentage: total > 0 ? (count / total) * 100 : 0 }
 }
@@ -120,9 +171,17 @@ export function aggregate(files: KeystrokeFile[], selectedHosts: Set<string>, ra
   const cells: Cell[] = []
   const activeDates = new Set<string>()
 
+  // Active screen-time (display_state) and mouse (mouse_state) accumulators.
+  const activeHourly = new Array(24).fill(0)
+  const activeCells: { date: string; hour: number; seconds: number }[] = []
+  let hasActiveData = false
+  const mouse: MouseTotals = { leftClick: 0, rightClick: 0, middleClick: 0, inches: 0, scrolls: 0 }
+  let hasMouseData = false
+  const mouseByBucket = new Map<string, MouseBucket & { key: string }>()
+
   for (const file of active) {
     activeDates.add(file.date)
-    for (const [hourStr, keys] of Object.entries(file.data.count_freq)) {
+    for (const [hourStr, keys] of Object.entries(file.data.keyboard)) {
       const hour = Number(hourStr)
       let cellTotal = 0
       for (const [code, count] of Object.entries(keys)) {
@@ -134,23 +193,74 @@ export function aggregate(files: KeystrokeFile[], selectedHosts: Set<string>, ra
       }
       cells.push({ date: file.date, hour, host: file.hostname, count: cellTotal, keys })
     }
+
+    // Active screen-time: hour -> seconds. Collected as cells so it shares the
+    // exact same bucket keys/labels as keystrokes (resolved after the loop).
+    if (file.data.active) {
+      for (const [hourStr, secs] of Object.entries(file.data.active)) {
+        if (!secs) continue
+        hasActiveData = true
+        const hour = Number(hourStr)
+        activeHourly[hour] += secs
+        activeCells.push({ date: file.date, hour, seconds: secs })
+      }
+    }
+
+    // Mouse: one flat total per file, bucketed by date (no hour resolution).
+    if (file.data.mouse) {
+      hasMouseData = true
+      const m = file.data.mouse
+      mouse.leftClick += m.leftClick
+      mouse.rightClick += m.rightClick
+      mouse.middleClick += m.middleClick
+      mouse.inches += m.inches
+      mouse.scrolls += m.scrolls
+      const [key, label] = mouseBucketKeyAndLabel(file.date, range.grain)
+      let mb = mouseByBucket.get(key)
+      if (!mb) { mb = { key, label, leftClick: 0, rightClick: 0, middleClick: 0, clicks: 0, inches: 0, scrolls: 0 }; mouseByBucket.set(key, mb) }
+      mb.leftClick += m.leftClick
+      mb.rightClick += m.rightClick
+      mb.middleClick += m.middleClick
+      mb.clicks += m.leftClick + m.rightClick + m.middleClick
+      mb.inches += m.inches
+      mb.scrolls += m.scrolls
+    }
   }
 
   const totalPresses = Object.values(perKey).reduce((a, b) => a + b, 0)
 
   // Time-series buckets (per grain), retaining per-host breakdown.
   const singleDay = activeDates.size <= 1
-  const bucketMap = new Map<string, { label: string; total: number; byHost: Record<string, number> }>()
+  const bucketMap = new Map<string, TimeBucket>()
+  const ensureBucket = (key: string, label: string): TimeBucket => {
+    let b = bucketMap.get(key)
+    if (!b) { b = { label, total: 0, byHost: {}, activeSeconds: 0 }; bucketMap.set(key, b) }
+    return b
+  }
   for (const c of cells) {
     const [key, label] = bucketKeyAndLabel(c.date, c.hour, range.grain, singleDay)
-    let b = bucketMap.get(key)
-    if (!b) { b = { label, total: 0, byHost: {} }; bucketMap.set(key, b) }
+    const b = ensureBucket(key, label)
     b.total += c.count
     b.byHost[c.host] = (b.byHost[c.host] || 0) + c.count
+  }
+  // Fold active screen-time into the same buckets. An hour with active time but
+  // no keystrokes still gets its bucket here, so the "Active" view isn't gappy.
+  for (const c of activeCells) {
+    const [key, label] = bucketKeyAndLabel(c.date, c.hour, range.grain, singleDay)
+    ensureBucket(key, label).activeSeconds += c.seconds
   }
   const timeSeries: TimeBucket[] = [...bucketMap.entries()]
     .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
     .map(([, v]) => v)
+
+  // Mouse series: ascending by bucket key (date/week/month).
+  const mouseSeries: MouseBucket[] = [...mouseByBucket.entries()]
+    .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
+    .map(([, v]) => ({
+      label: v.label, leftClick: v.leftClick, rightClick: v.rightClick,
+      middleClick: v.middleClick, clicks: v.clicks, inches: v.inches, scrolls: v.scrolls,
+    }))
+  const totalActiveSeconds = activeHourly.reduce((a, b) => a + b, 0)
 
   // Ranked keys.
   const sorted = Object.entries(perKey).filter(([, c]) => c > 0).sort((a, b) => b[1] - a[1])
@@ -213,5 +323,11 @@ export function aggregate(files: KeystrokeFile[], selectedHosts: Set<string>, ra
     hourly,
     devices,
     categories,
+    hasActiveData,
+    totalActiveSeconds,
+    activeHourly,
+    hasMouseData,
+    mouse,
+    mouseSeries,
   }
 }

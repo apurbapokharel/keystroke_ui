@@ -1,5 +1,6 @@
 <script lang="ts">
   import { state } from '../stores.svelte'
+  import { formatDuration } from '../format'
 
   const s = $derived(state.stats)
 
@@ -12,6 +13,17 @@
 
   const cards = $derived([
     { label: 'Total Presses', value: s.totalPresses.toLocaleString(), sub: `${s.activeDays} active day${s.activeDays === 1 ? '' : 's'}` },
+    // Active-time cards only appear once there's screen-time data (v2+).
+    ...(s.hasActiveData
+      ? [
+          { label: 'Active Time', value: formatDuration(s.totalActiveSeconds), sub: 'screen awake & unlocked' },
+          {
+            label: 'Keys / Min',
+            value: s.totalActiveSeconds > 0 ? Math.round(s.totalPresses / (s.totalActiveSeconds / 60)).toLocaleString() : '—',
+            sub: 'presses per active min',
+          },
+        ]
+      : []),
     { label: 'Most Used', value: s.mostUsed?.label ?? '—', sub: s.mostUsed ? `${s.mostUsed.percentage.toFixed(1)}% of all` : '' },
     { label: 'Least Used', value: s.leastUsed?.label ?? '—', sub: s.leastUsed ? `${s.leastUsed.count.toLocaleString()} presses` : 'letters only' },
     { label: 'Est. Words', value: s.estWords.toLocaleString(), sub: 'letters ÷ 5' },

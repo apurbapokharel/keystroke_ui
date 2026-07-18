@@ -8,7 +8,8 @@
 // load while older days are fetched once and never again.
 
 import { CONFIG } from './config'
-import type { KeystrokeData } from './types'
+import { normalize } from './api'
+import type { NormalizedData, RawFile } from './types'
 import type { Manifest } from './api'
 
 const CACHE_KEY = 'ks:alltime:v1'
@@ -46,12 +47,12 @@ function saveCache(daily: DailyMap): void {
   }
 }
 
-async function fetchRaw(date: string, host: string): Promise<KeystrokeData | null> {
+async function fetchRaw(date: string, host: string): Promise<NormalizedData | null> {
   const url = `${CONFIG.rawBaseUrl}/${date}/${host}/keystrokes.json`
   try {
     const res = await fetch(url)
     if (!res.ok) return null
-    return (await res.json()) as KeystrokeData
+    return normalize((await res.json()) as RawFile)
   } catch {
     return null
   }
@@ -66,7 +67,7 @@ async function foldDate(date: string, hosts: string[]): Promise<DayStat> {
   let c = 0
   for (const data of files) {
     if (!data) continue
-    for (const [hourStr, keys] of Object.entries(data.count_freq)) {
+    for (const [hourStr, keys] of Object.entries(data.keyboard)) {
       const hour = Number(hourStr)
       for (const [code, count] of Object.entries(keys)) {
         h[hour] += count

@@ -7,21 +7,28 @@
   import Keyboard from './lib/components/Keyboard.svelte'
   import DeviceBreakdown from './lib/components/DeviceBreakdown.svelte'
   import TopKeys from './lib/components/TopKeys.svelte'
-  import TimeChart from './lib/components/TimeChart.svelte'
+  import ActivityChart from './lib/components/ActivityChart.svelte'
+  import MouseStrip from './lib/components/MouseStrip.svelte'
+  import Mouse from './lib/components/Mouse.svelte'
   import Insights from './lib/components/Insights.svelte'
   import FingerLoad from './lib/components/FingerLoad.svelte'
   import LayoutOptimizer from './lib/components/LayoutOptimizer.svelte'
   import Trends from './lib/components/Trends.svelte'
   import Records from './lib/components/Records.svelte'
 
-  type Tab = 'overview' | 'fingers' | 'trends' | 'records'
+  type Tab = 'overview' | 'mouse' | 'fingers' | 'trends' | 'records'
   const TABS: { id: Tab; label: string }[] = [
     { id: 'overview', label: 'Overview' },
+    { id: 'mouse', label: 'Mouse' },
     { id: 'fingers', label: 'Fingers & Layout' },
     { id: 'trends', label: 'Trends' },
     { id: 'records', label: 'Records' },
   ]
   let tab = $state<Tab>('overview')
+  // Tabs that read the selected date-range + machine filter.
+  const rangeScoped = $derived(tab === 'overview' || tab === 'mouse' || tab === 'fingers')
+  // Show the compact mouse strip on Overview only where there's a per-day series.
+  const showMouseStrip = $derived(store.range?.grain !== 'hour' && store.stats.hasMouseData)
 
   onMount(() => store.init())
 </script>
@@ -66,12 +73,12 @@
       </nav>
 
       <!-- Range/machine filters only apply to range-scoped tabs -->
-      {#if tab === 'overview' || tab === 'fingers'}
+      {#if rangeScoped}
         <TimeRangePicker />
         <MachineFilter />
       {/if}
 
-      {#if (tab === 'overview' || tab === 'fingers') && !store.hasData}
+      {#if rangeScoped && !store.hasData}
         <div class="card p-16 text-center">
           <p class="text-lg font-medium" style="color: var(--ink)">No data in this range</p>
           <p class="mt-1 text-sm" style="color: var(--muted)">Try a wider range or a different preset.</p>
@@ -86,15 +93,15 @@
             {#if tab === 'overview'}
               <StatsBar />
               <Keyboard />
-              <div class="card p-5">
-                <h2 class="mb-4 text-sm font-semibold uppercase tracking-wide" style="color: var(--ink-2)">
-                  Keystrokes Over Time
-                </h2>
-                <TimeChart />
-              </div>
+              <ActivityChart />
+              {#if showMouseStrip}
+                <MouseStrip />
+              {/if}
               <DeviceBreakdown />
               <TopKeys />
               <Insights />
+            {:else if tab === 'mouse'}
+              <Mouse />
             {:else if tab === 'fingers'}
               <FingerLoad />
               <LayoutOptimizer />
